@@ -4,29 +4,49 @@ from torch.distributions import Uniform, Normal
 
 class DiscretisedDiffusion(nn.Module):
 
-    def __init__(self, sigma1, K):
+    def __init__(self, sigma1, K, hiddenDim):
         super().__init__()
         self.sigma1 = sigma1
         self.K = K
+        self.NN = nn.Sequential(
+            nn.Linear(2*K + 1, hiddenDim),
+            nn.LeakyReLU(),
+            nn.Linear(hiddenDim, 2*K)
+        )
 
-    def discretised_cdf(self, mu, sigma, x):
+    def discretised_cdf(self,mu, sigma, x):
         F = 0.5 * (1 + torch.erf((x - mu) / (sigma * torch.sqrt(torch.tensor(2)))))
-        return torch.where(x <= -1, torch.tensor(0),
-                           torch.where(x >= 1, torch.tensor(1), F))
+        G = torch.where(x <= -1, torch.tensor(0),
+                        torch.where(x >= 1, torch.tensor(1), F))
+        return G
 
-    def discretised_output_distribution(self, mu, t, gamma):
+    import torch
+    from torch import nn
+
+    def discretised_output_distribution(self, mu, t, K, gamma, tmin=1e-10):
+
         D = mu.shape[0]
-        mu_x = mu ** (gamma - 1/(1-gamma))
-        sigma_x = (1 - gamma) ** (-1/2)
+
+        if t < tmin:
+            mu_x = torch.zeros_like(mu)
+            sigma_x = torch.ones_like(mu)
+        else:
+            # Run network to get mu_epsilon and ln(sigma_epsilon)
+            mu_epsilon, ln_sigma_epsilon = self.NN(torch.cat([mu, t]))
+
+            mu_x = mu ** (gamma - 1 / (1 - gamma)) * (mu_epsilon ** (1 / (1 - gamma)))
+            sigma_x = (1 - gamma) ** (-1 / 2) * torch.exp(ln_sigma_epsilon / 2)
+
         pO = []
         for d in range(D):
             pO.append([])
-            for k in range(self.K):
-                kl = 2*(k-1)/(self.K-1)
-                kr = 2*k/(self.K-1)
+            for k in range(K):
+                kl = 2 * (k - 1) / (K - 1)
+                kr = 2 * k / (K - 1)
                 cdf_kl = self.discretised_cdf(mu_x[d], sigma_x[d], kl)
                 cdf_kr = self.discretised_cdf(mu_x[d], sigma_x[d], kr)
                 pO[d].append(cdf_kr - cdf_kl)
+
         return torch.stack(pO)
 
     def discretised_posterior(self, x):
