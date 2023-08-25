@@ -46,10 +46,10 @@ plt.show()
 bfn = DiscretisedBNF(inDim=X.shape[1] ,sigma1=0.001**0.5, K=16, hiddenDim= X.shape[1])
 bfn.cuda()
 
-optim = AdamW(bfn.parameters(), lr=1e-3)
+optim = AdamW(bfn.parameters(), lr=1e-4)
 
 
-n = 1000
+n = 10000
 losses = []
 for i in tqdm(range(n)):
     optim.zero_grad()
@@ -68,11 +68,10 @@ plt.plot(losses)
 plt.show()
 
 
-x_hat = bfn.iterative_sampling_process(inDim=X.shape[1] ,n=100).detach().cpu().numpy()
-x_hat = x_hat + (np.random.randn(*x_hat.shape) * 0.1) # add some noise so we can see it
+x_hat = bfn.iterative_sampling_process(inDim=X.shape[1] ,n=10).detach().cpu().numpy()
 
-
-plt.title("Samples")
-plt.scatter(x_hat[:, 0], x_hat[:, 1]);
+plt.title("Dataset")
+plt.scatter(torch.linspace(0, 2 * np.pi, X.shape[1]), X[0, :].cpu().detach());
+plt.scatter(torch.linspace(0, 2 * np.pi, X.shape[1]), x_hat[0, :]);
 plt.grid()
 plt.show()
